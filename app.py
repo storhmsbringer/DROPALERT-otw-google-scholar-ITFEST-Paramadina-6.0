@@ -45,30 +45,99 @@ import os
 import json
 import warnings
 
-import numpy as np
-import pandas as pd
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.inspection import permutation_importance
-from sklearn.metrics import r2_score
-from xgboost import XGBRegressor
-
-warnings.filterwarnings("ignore")
 
 # ════════════════════════════════════════════════════════
 # 1. KONFIGURASI HALAMAN
 # ════════════════════════════════════════════════════════
+# Dipindah ke paling atas (sebelum import pihak ketiga lain) supaya, kalau
+# ada dependency yang gagal ter-install di environment deploy (mis. Streamlit
+# Community Cloud), kita masih bisa menampilkan halaman error yang rapi via
+# st.error() alih-alih traceback mentah "ModuleNotFoundError" yang membuat
+# aplikasi tampak rusak total.
 st.set_page_config(
     page_title="DropAlert | Deteksi Risiko Putus Sekolah",
     page_icon="🚨",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ════════════════════════════════════════════════════════
+# 1b. IMPORT DEPENDENCY PIHAK KETIGA — DENGAN PENGECEKAN
+# ════════════════════════════════════════════════════════
+# CATATAN REVISI (fix untuk error deploy Streamlit Cloud):
+# Sebelumnya semua import pihak ketiga (numpy, pandas, plotly, scikit-learn,
+# xgboost) langsung di top-level tanpa pengaman. Kalau SATU SAJA modul gagal
+# ter-install di environment deploy — misalnya karena requirements.txt belum
+# ke-pull environment lama (butuh "Reboot app" di Streamlit Cloud), resolver
+# pip gagal menaikkan versi salah satu paket, atau library sistem yang
+# dibutuhkan xgboost (libgomp1) tidak ada — Python langsung melempar
+# `ModuleNotFoundError` mentah dan Streamlit menampilkannya sebagai "This app
+# has encountered an error" tanpa konteks.
+#
+# PENTING: blok di bawah ini TIDAK "menghilangkan" kebutuhan paketnya —
+# plotly/xgboost/dll tetap WAJIB ada di requirements.txt & ter-install
+# dengan benar agar dashboard berfungsi. Yang berubah hanyalah: kalau memang
+# ada yang belum ter-install, penggunanya (kamu) langsung diberi tahu paket
+# mana yang hilang dan langkah perbaikannya, bukan traceback Python mentah.
+_MISSING_DEPS = []
+
+try:
+    import numpy as np
+except ImportError:
+    _MISSING_DEPS.append("numpy")
+
+try:
+    import pandas as pd
+except ImportError:
+    _MISSING_DEPS.append("pandas")
+
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+except ImportError:
+    _MISSING_DEPS.append("plotly")
+
+try:
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor
+    from sklearn.neighbors import KNeighborsRegressor
+    from sklearn.inspection import permutation_importance
+    from sklearn.metrics import r2_score
+except ImportError:
+    _MISSING_DEPS.append("scikit-learn")
+
+try:
+    from xgboost import XGBRegressor
+except ImportError:
+    _MISSING_DEPS.append("xgboost")
+
+if _MISSING_DEPS:
+    st.error(
+        "⚠️ **Dependency Python berikut belum terpasang di environment ini:**\n\n"
+        + "\n".join(f"- `{dep}`" for dep in _MISSING_DEPS)
+        + "\n\n"
+        "**Ini bukan bug di kode `app.py`** — modul di atas memang belum ada "
+        "di environment tempat aplikasi ini dijalankan. Langkah perbaikan:\n\n"
+        "1. Pastikan nama paket di atas tertulis benar di `requirements.txt` "
+        "(mis. `plotly>=5.20.0`, bukan `Plotly` atau typo lain), dan sebaiknya "
+        "dikunci ke versi tetap (`plotly==5.24.1`) alih-alih rentang terbuka "
+        "`>=` supaya resolver pip tidak menarik versi mayor baru yang belum "
+        "tentu cocok.\n"
+        "2. Kalau `xgboost` yang hilang, tambahkan file `packages.txt` di root "
+        "repo berisi satu baris `libgomp1` — library sistem yang dibutuhkan "
+        "xgboost di image Debian milik Streamlit Community Cloud.\n"
+        "3. Di Streamlit Cloud: buka **Manage app → menu titik tiga → Reboot "
+        "app** supaya environment dibangun ulang dari `requirements.txt` "
+        "terbaru, bukan memakai cache environment lama.\n"
+        "4. Kalau masih gagal, buka log build (ikon terminal di halaman "
+        "Manage app) dan cari baris error `pip install` — pesan aslinya di "
+        "situ biasanya menunjukkan akar masalah (mis. konflik versi, timeout, "
+        "atau kegagalan build wheel)."
+    )
+    st.stop()
+
+warnings.filterwarnings("ignore")
 
 # ════════════════════════════════════════════════════════
 # 2. CUSTOM CSS
